@@ -164,7 +164,10 @@ export async function readLocalAttachmentWith(
 ): Promise<LocalAttachment | undefined> {
   const mime = await files.mime(path).catch(() => undefined)
   if (!mime) return undefined
-  if (!mime.startsWith("image/") && mime !== "application/pdf") return undefined
+  // Only images are attached. A document is left as the path the user pasted:
+  // a model that cannot read it refuses the whole turn, while the agent can
+  // open the path itself.
+  if (!mime.startsWith("image/")) return undefined
   if (mime === "image/svg+xml") {
     const content = await files.readText(path, maxBytes).catch(() => undefined)
     if (!content || Buffer.byteLength(content) > maxBytes) return undefined

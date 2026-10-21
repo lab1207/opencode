@@ -65,13 +65,18 @@ describe("prompt local attachments", () => {
     })
   })
 
-  test("reads image and PDF attachments as bytes", async () => {
+  test("reads image attachments as bytes", async () => {
     const content = new Uint8Array([1, 2, 3])
-    expect(await readLocalAttachmentWith(files({ mime: "application/pdf", bytes: content }), "/tmp/file.pdf")).toEqual({
+    expect(await readLocalAttachmentWith(files({ mime: "image/png", bytes: content }), "/tmp/file.png")).toEqual({
       type: "binary",
-      mime: "application/pdf",
+      mime: "image/png",
       content,
     })
+  })
+
+  test("leaves a document alone, so a model that cannot read it still gets the path", async () => {
+    const content = new Uint8Array([1, 2, 3])
+    expect(await readLocalAttachmentWith(files({ mime: "application/pdf", bytes: content }), "/tmp/file.pdf")).toBeUndefined()
   })
 
   test("ignores unsupported and unreadable local files", async () => {
@@ -105,18 +110,27 @@ describe("prompt local attachments", () => {
   test("resolves quoted paths and URI lists as ordered attachments", async () => {
     await using tmp = await tmpdir()
     const image = path.join(tmp.path, "one image.png")
-    const pdf = path.join(tmp.path, "two file.pdf")
-    await Promise.all([Bun.write(image, new Uint8Array([1, 2, 3])), Bun.write(pdf, new Uint8Array([4, 5, 6]))])
+    const second = path.join(tmp.path, "two file.png")
+    await Promise.all([Bun.write(image, new Uint8Array([1, 2, 3])), Bun.write(second, new Uint8Array([4, 5, 6]))])
 
     for (const input of [
-      `'${image}' "${pdf}"`,
-      `# dropped files\r\n${pathToFileURL(image).href}\r\n${pathToFileURL(pdf).href}`,
+      `'${image}' "${second}"`,
+      `# dropped files\r\n${pathToFileURL(image).href}\r\n${pathToFileURL(second).href}`,
     ]) {
       expect(await resolvePastedAttachments(input, process.platform)).toEqual([
         { type: "file", uri: "data:image/png;base64,AQID", filename: "one image.png" },
-        { type: "file", uri: "data:application/pdf;base64,BAUG", filename: "two file.pdf" },
+        { type: "file", uri: "data:image/png;base64,BAUG", filename: "two file.png" },
       ])
     }
+  })
+
+  test("falls back to plain text for a drop that carries a document", async () => {
+    await using tmp = await tmpdir()
+    const image = path.join(tmp.path, "one image.png")
+    const pdf = path.join(tmp.path, "two file.pdf")
+    await Promise.all([Bun.write(image, new Uint8Array([1, 2, 3])), Bun.write(pdf, new Uint8Array([4, 5, 6]))])
+
+    expect(await resolvePastedAttachments(`'${image}' "${pdf}"`, process.platform)).toBeUndefined()
   })
 
   test("falls back to plain text for unsupported or incomplete drops", async () => {
